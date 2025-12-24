@@ -12,6 +12,10 @@
 #define MAX_TOKEN_SIZE 64
 #define MAX_NUM_TOKENS 64
 #define MAX_BG_PROCESSES 64
+#define MAX_FG_CMD 64
+
+void sigint_handler(int sig);
+volatile sig_atomic_t fg_pid = 0;
 
 /* Splits the string by space and returns the array of tokens
  *
@@ -48,6 +52,13 @@ char **tokenize(char *line)
 	return tokens;
 }
 
+void sigint_handler(int sig) {
+	if (fg_pid > 0) {
+		kill(fg_pid, SIGINT);
+	}
+
+}
+
 int main(int argc, char *argv[])
 {
 	char cur_dir[MAX_DIR_SIZE];
@@ -57,12 +68,16 @@ int main(int argc, char *argv[])
 	int count = 0;				// count of background process running
 	pid_t bg_pids[MAX_BG_PROCESSES];
 
+	signal(SIGINT, sigint_handler);
+
 	while (1)
 	{
 		/* BEGIN: TAKING INPUT */
 		getcwd(cur_dir, sizeof(cur_dir));
 		printf("%s $ ", cur_dir);
 		fflush(stdout);
+
+		fg_pid = 0;
 		
 		if (fgets(line, sizeof(line), stdin) == NULL)
         {
@@ -72,6 +87,9 @@ int main(int argc, char *argv[])
 
         tokens = tokenize(line);
 
+		for (int i = 0; tokens[i] != NULL; i++) {
+			printf("found token %s (remove this debug output later)\n", tokens[i]);
+		}
 		// printf("Command entered: %s (remove this debug output later)\n", line);
 		/* END: TAKING INPUT */
 		
@@ -135,41 +153,61 @@ int main(int argc, char *argv[])
 		}
 
 		int is_background = 0;
+		int is_serial = 0;
+		int is_parallel = 0;
+
+		for (int i = 0; tokens[i] != NULL; i++) {
+			if ((tokens[i], "&&") == 0) {
+				is_serial = 1;
+				break;
+			}
+		}
 
 		if (strcmp(tokens[num_tokens - 1], "&") == 0) {
 			is_background = 1;
-		}
-
-		if (is_background) {
 			tokens[num_tokens - 1] = NULL;
 		}
+		char *args[MAX_TOKEN_SIZE];
+		int j = 0;								// an index into token
+		for (i = 0; tokens[i] != NULL; i++) {
+			args[j++] = tokens[i];
+			if (strcmp(tokens[i], "&&") == 0 || strcmp(tokens[i], "&&&") == 0) {
 
-		
-		
-
-		pid_t pid = fork();
-
-		if (pid == 0) {
-			execvp(tokens[0], tokens);
-			fprintf(stderr, "exec failed: %s %s\n", tokens[0], strerror(errno));
-			exit(1);
-		} else if (pid > 0) {
-			int status;
-
-			if (is_background) {
-				bg_pids[count] = pid;
-				count++;
+			} else {
+				continue;
 			}
-			
+			pid_t pid = fork();
+
 			if (!is_background) {
-				waitpid(pid, &status, 0);
-				if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-					printf("EXITSTATUS: %d\n", WEXITSTATUS(status));
-				}
+				fg_pid = pid;
 			}
-			
-		} else {
-			fprintf(stderr, "Error! fork failed: %s %s\n", tokens[0], strerror(errno));
+
+			if (pid == 0) {
+				signal(SIGINT, SIG_DFL);
+				if (is_background) {
+					setpgid(0, 0);
+				}
+				execvp(tokens[0], tokens);
+				fprintf(stderr, "exec failed: %s %s\n", tokens[0], strerror(errno));
+				exit(1);
+			} else if (pid > 0) {
+				int status;
+
+				if (is_background) {
+					bg_pids[count] = pid;
+					count++;
+				}
+				
+				if (!is_background) {
+					waitpid(pid, &status, 0);
+					if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+						printf("EXITSTATUS: %d\n", WEXITSTATUS(status));
+					}
+				}
+				
+			} else {
+				fprintf(stderr, "Error! fork failed: %s %s\n", tokens[0], strerror(errno));
+			}
 		}
 
 		// Freeing the allocated memory
