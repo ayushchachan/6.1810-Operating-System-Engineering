@@ -196,9 +196,7 @@ int main(int argc, char *argv[])
 				if (is_background) {
 					bg_pids[count] = pid;
 					count++;
-				}
-				
-				if (!is_background) {
+				} else {
 					waitpid(pid, &status, 0);
 					if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
 						printf("EXITSTATUS: %d\n", WEXITSTATUS(status));
