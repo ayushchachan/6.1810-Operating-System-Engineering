@@ -23,15 +23,15 @@ pid_t bg_pids[MAX_BG_PROCESSES];
 
 int main(void) {
     char cmdline[MAX_CMD_LENGTH];
-    char current_working_directory[MAX_DIR_LENGTH];
+    char curr_dir[MAX_DIR_LENGTH];
 
     while (1) {
         /*print current directory*/
-        if (getcwd(current_working_directory, sizeof(current_working_directory)) == NULL) {
+        if (getcwd(curr_dir, sizeof(curr_dir)) == NULL) {
             fprintf(stderr, "getcwd error: %s\n", strerror(errno));
-            strcpy(current_working_directory, "?");
+            strcpy(curr_dir, "?");
         }
-        printf("%s $ ", current_working_directory);
+        printf("%s $ ", curr_dir);
         fflush(stdout);
 
         /*Begin taking input*/
